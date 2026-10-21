@@ -1,0 +1,25 @@
+name: Verificacao do Satoshi Pessoal
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 12 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Registrar execucao
+        run: echo "Verificacao do Satoshi Pessoal executada em $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+      - name: Salvar registro
+        run: |
+          mkdir -p registros
+          echo "Verificacao executada em $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> registros/verificacoes.txt
+      - name: Publicar registro
+        uses: actions/upload-artifact@v4
+        with:
+          name: registro-verificacao
+          path: registros/verificacoes.txt
