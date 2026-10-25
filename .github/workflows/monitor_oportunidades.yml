@@ -1,0 +1,114 @@
+name: Monitor de Oportunidades do Satoshi Pessoal
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '37 12 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  monitorar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verificar páginas públicas e preparar relatório
+        run: |
+          python - <<'PY'
+          import csv
+          import hashlib
+          import urllib.request
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          sources = [
+              {
+                  "name": "EarnTrek - página principal",
+                  "url": "https://earntrek.com/pt",
+                  "checks": ["Pix", "US$ 5", "pesquisas"],
+                  "notes": "Recompensas por pesquisas; conferir regras manualmente."
+              },
+              {
+                  "name": "EarnTrek - termos de uso",
+                  "url": "https://earntrek.com/pt/terms",
+                  "checks": ["robôs", "scripts", "saque"],
+                  "notes": "Atenção: os termos proíbem bots/scripts para automatizar respostas."
+              },
+              {
+                  "name": "Bitso - taxas de transações",
+                  "url": "https://bitso.com/br/fees/transactions",
+                  "checks": ["PIX", "Bitcoin"],
+                  "notes": "Verificar taxas de negociação, spread e saque BTC antes de qualquer conversão."
+              }
+          ]
+
+          now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+          Path("relatorios").mkdir(exist_ok=True)
+          rows = []
+          report = [
+              "# Satoshi Pessoal — Monitor diário de oportunidades",
+              "",
+              f"Executado em: {now}",
+              "",
+              "Este relatório verifica apenas páginas públicas. Não cria contas, não responde pesquisas, não movimenta dinheiro e não compra Bitcoin.",
+              "Disponibilidade HTTP não garante elegibilidade, pagamento ou rentabilidade.",
+              ""
+          ]
+
+          for source in sources:
+              status = "ERRO"
+              digest = ""
+              found = []
+              detail = ""
+              request = urllib.request.Request(
+                  source["url"],
+                  headers={"User-Agent": "SatoshiPessoal-Monitor/1.0 (public-page-check)"}
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=20) as response:
+                      body = response.read(1_500_000)
+                      status = str(response.status)
+                  text = body.decode("utf-8", errors="replace")
+                  digest = hashlib.sha256(body).hexdigest()
+                  lower = text.lower()
+                  found = [term for term in source["checks"] if term.lower() in lower]
+                  detail = "Página acessível; confira o conteúdo e as condições manualmente."
+              except Exception as exc:
+                  detail = f"Não foi possível verificar a página: {type(exc).__name__}: {exc}"
+
+              rows.append({
+                  "data_utc": now,
+                  "fonte": source["name"],
+                  "url": source["url"],
+                  "status_http": status,
+                  "sha256_conteudo": digest,
+                  "termos_encontrados": "; ".join(found),
+                  "observacoes": source["notes"],
+                  "resultado": detail
+              })
+              report.extend([
+                  f"## {source['name']}",
+                  f"- URL: {source['url']}",
+                  f"- Status HTTP: {status}",
+                  f"- SHA-256 da resposta: {digest or 'indisponível'}",
+                  f"- Termos procurados encontrados: {', '.join(found) if found else 'nenhum ou página indisponível'}",
+                  f"- Observação: {source['notes']}",
+                  f"- Resultado: {detail}",
+                  ""
+              ])
+
+          with open("relatorios/monitor.csv", "w", newline="", encoding="utf-8") as file:
+              writer = csv.DictWriter(file, fieldnames=rows[0].keys())
+              writer.writeheader()
+              writer.writerows(rows)
+
+          Path("relatorios/monitor.md").write_text("\n".join(report), encoding="utf-8")
+          print("\n".join(report))
+          PY
+
+      - name: Disponibilizar relatório para consulta
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorio-diario-satoshi-pessoal
+          path: relatorios/
+          retention-days: 30
